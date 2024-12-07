@@ -24,10 +24,30 @@ class SC : public Base
     {
         /** Tick on which the entry was inserted. */
         Tick tickInserted;
+        bool is_valid
+        bool is_sc
+
+        Tick* tickTouched;
+        bool* isTouched;
         /**
          * Default constructor. Invalidate data.
          */
-        SCReplData() : tickInserted(0) {}
+        SCReplData() 
+          : tickInserted(0), is_valid(false), is_sc(false), tickTouched(nullptr), isTouched(nullptr) {}
+
+        SCReplData(int numsc) : tickInserted(0), is_valid(false), is_sc(false) {
+          tickTouched = new Tick[numsc];
+          isTouched = new bool[numsc];
+          for (int i = 0; i < numsc; i++) {
+            tickTouched[i] = Tick(0);
+            isTouched[i] = false;
+          }
+        }
+
+        ~SCReplData() {
+          delete[] tickTouched;
+          delete[] isTouched;
+        }
     };
 
   private:
@@ -36,7 +56,6 @@ class SC : public Base
      * ticks since being created to avoid a tie
      */
     mutable Tick timeTicks;
-
     const int numSCBlocks;
 
   public:
