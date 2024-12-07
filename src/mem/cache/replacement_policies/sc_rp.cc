@@ -10,7 +10,9 @@
 
 #include "params/SCRP.hh"
 #include "sim/cur_tick.hh"
-#include "debug/ECE565.hh"
+#include "debug/ECE565V0.hh"
+#include "debug/ECE565V1.hh"
+#include "debug/ECE565V2.hh"
 
 namespace gem5
 {
@@ -39,6 +41,7 @@ SC::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
     */
 
     ++timeTicks;
+    DPRINTF(ECE565V1, "calling invalidate() @ Tick=%d\n", timeTicks);
     std::static_pointer_cast<SCReplData>(replacement_data)->is_valid = false;
     //if (std::static_pointer_cast<SCReplData>(replacement_data)->is_sc) { }
 }
@@ -53,6 +56,7 @@ SC::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
     */
     // A touch does not modify the insertion tick
     ++timeTicks;
+    DPRINTF(ECE565V1, "calling touch() @ Tick=%d\n", timeTicks);
     for (int i = 0; i < numSCBlocks; i++) {
         if (!std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i]) {
             std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i] = true;
@@ -76,6 +80,7 @@ SC::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 
     // Set insertion tick
     ++timeTicks;
+    DPRINTF(ECE565V1, "calling reset() @ Tick=%d\n", timeTicks);
     std::static_pointer_cast<SCReplData>(replacement_data)->is_valid = true;
     std::static_pointer_cast<SCReplData>(replacement_data)->is_sc = true;
     std::static_pointer_cast<SCReplData>(replacement_data)->tickInserted = timeTicks;
@@ -100,14 +105,14 @@ SC::getVictim(const ReplacementCandidates& candidates) const
             Random amongst untouched if not all elements have been put in.
         }
     */
-    DPRINTF(ECE565, "calling getVictim() @ Tick=%d with %d shepherd cache blocks\n", timeTicks, numSCBlocks);
+    DPRINTF(ECE565V1, "calling getVictim() @ Tick=%d\n", timeTicks);
 
     assert(candidates.size() > 0); // There must be at least one replacement candidate
     assert(candidates.size() - numSCBlocks > 0); // Cannot be more sc blocks than candidates
 
     int num_sc = 0;
     for (const auto& candidate : candidates) {
-        DPRINTF(ECE565, "  > is_sc=%d is_valid=%d\n",
+        DPRINTF(ECE565V2, "  > is_sc=%d is_valid=%d\n",
             std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc,
             std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid
         );
@@ -117,7 +122,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
 
     // initialize the shepherd blocks if they have not already been
     if (num_sc != numSCBlocks) {
-        DPRINTF(ECE565, "initializing shepherd cache frame #%d\n", numInitalizedFrames);
+        DPRINTF(ECE565V0, "initializing shepherd cache frame #%d\n", numInitalizedFrames);
         gem5_assert(num_sc == 0,
                 "Actual number of shepherd cache blocks (%d) should be 0 at initialization\n",
                 num_sc, numSCBlocks, timeTicks);
@@ -132,7 +137,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
         numInitalizedFrames++;
         num_sc = 0;
         for (const auto& candidate : candidates) {
-            DPRINTF(ECE565, "  > is_sc=%d is_valid=%d\n",
+            DPRINTF(ECE565V2, "  > is_sc=%d is_valid=%d\n",
                 std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc,
                 std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid
             );
@@ -167,7 +172,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
     // do the shifts
     std::function<void(int)> _shift_sc = [candidates, this](int scidx) {
         // shift the imminence trackers
-        for (const auto& candidate : candidates) {
+        for (auto* candidate : candidates) {
             for (int i = scidx; i < numSCBlocks-1; i++) {
                 std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[i]
                     = std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[i+1];
@@ -203,6 +208,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
     for (const auto& candidate : candidates) {
         if (!std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid) {
             _victimize(candidate);
+            DPRINTF(ECE565V0, "@T=%d Victimizing invalid block\n", timeTicks);
             return candidate;
         }
     }
@@ -214,6 +220,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
         if (!std::static_pointer_cast<SCReplData>(candidate->replacementData)->isTouched[0]) {
             // victimize an untouched cache block
             _victimize(candidate);
+            DPRINTF(ECE565V0, "@T=%d Victimizing untouched block\n", timeTicks);
             return candidate;
         }
         if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[0] >
@@ -225,6 +232,7 @@ SC::getVictim(const ReplacementCandidates& candidates) const
 
     // victimize youngest block
     _victimize(victim);
+    DPRINTF(ECE565V0, "@T=%d Victimizing youngest block (%d)\n", timeTicks, std::static_pointer_cast<SCReplData>(victim->replacementData)->tickTouched[0]);
     return victim;
 }
 
