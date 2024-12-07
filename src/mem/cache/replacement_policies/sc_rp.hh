@@ -24,15 +24,15 @@ class SC : public Base
     {
         /** Tick on which the entry was inserted. */
         Tick tickInserted;
-        bool is_valid
-        bool is_sc
+        bool is_valid;
+        bool is_sc;
 
         Tick* tickTouched;
         bool* isTouched;
         /**
          * Default constructor. Invalidate data.
          */
-        SCReplData() 
+        SCReplData()
           : tickInserted(0), is_valid(false), is_sc(false), tickTouched(nullptr), isTouched(nullptr) {}
 
         SCReplData(int numsc) : tickInserted(0), is_valid(false), is_sc(false) {
@@ -56,6 +56,8 @@ class SC : public Base
      * ticks since being created to avoid a tie
      */
     mutable Tick timeTicks;
+    // whether or not the shepherd cache has been initialized
+    mutable int numInitalizedFrames;
     const int numSCBlocks;
 
   public:

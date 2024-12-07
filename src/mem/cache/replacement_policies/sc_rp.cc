@@ -6,9 +6,11 @@
 
 #include <cassert>
 #include <memory>
+#include <functional>
 
 #include "params/SCRP.hh"
 #include "sim/cur_tick.hh"
+#include "debug/ECE565.hh"
 
 namespace gem5
 {
@@ -17,7 +19,7 @@ namespace replacement_policy
 {
 
 SC::SC(const Params &p)
-  : Base(p), numSCBlocks(p.num_sc_blocks)
+  : Base(p), numSCBlocks(p.num_sc_blocks), numInitalizedFrames(0)
 {
 }
 
@@ -36,10 +38,9 @@ SC::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
         }
     */
 
+    ++timeTicks;
     std::static_pointer_cast<SCReplData>(replacement_data)->is_valid = false;
-    std::static_pointer_cast<SCReplData>(replacement_data)->is_touched = false;
     //if (std::static_pointer_cast<SCReplData>(replacement_data)->is_sc) { }
-    std::static_pointer_cast<SCReplData>(replacement_data)->is_sc = false;
 }
 
 void
@@ -51,10 +52,11 @@ SC::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
         }
     */
     // A touch does not modify the insertion tick
+    ++timeTicks;
     for (int i = 0; i < numSCBlocks; i++) {
-        if (!std::static_pointer_cast<SCReplData>(replacement_data)->is_touched[i]) {
-            std::static_pointer_cast<SCReplData>(replacement_data)->is_touched[i] = true;
-            std::static_pointer_cast<SCReplData>(replacement_data)->tick_touched[i] = timeTicks;
+        if (!std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i]) {
+            std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i] = true;
+            std::static_pointer_cast<SCReplData>(replacement_data)->tickTouched[i] = timeTicks;
         }
     }
 
@@ -73,10 +75,10 @@ SC::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
     */
 
     // Set insertion tick
-    ++timeTicks
+    ++timeTicks;
     std::static_pointer_cast<SCReplData>(replacement_data)->is_valid = true;
     std::static_pointer_cast<SCReplData>(replacement_data)->is_sc = true;
-    std::static_pointer_cast<SCReplData>(replacement_data)->tick_insert = timeTicks;
+    std::static_pointer_cast<SCReplData>(replacement_data)->tickInserted = timeTicks;
 }
 
 ReplaceableEntry*
@@ -98,38 +100,91 @@ SC::getVictim(const ReplacementCandidates& candidates) const
             Random amongst untouched if not all elements have been put in.
         }
     */
+    DPRINTF(ECE565, "calling getVictim() @ Tick=%d with %d shepherd cache blocks\n", timeTicks, numSCBlocks);
 
     assert(candidates.size() > 0); // There must be at least one replacement candidate
     assert(candidates.size() - numSCBlocks > 0); // Cannot be more sc blocks than candidates
-    int num_sc = 0;
-    for (const auto& candidate : candidates)
-        if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc)
-            num_sc++;
 
-    assert(num_sc == numSCBlocks) // State should always start with the correct number of sc blocks
-    
+    int num_sc = 0;
+    for (const auto& candidate : candidates) {
+        DPRINTF(ECE565, "  > is_sc=%d is_valid=%d\n",
+            std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc,
+            std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid
+        );
+
+        if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) num_sc++;
+    }
+
+    // initialize the shepherd blocks if they have not already been
+    if (num_sc != numSCBlocks) {
+        DPRINTF(ECE565, "initializing shepherd cache frame #%d\n", numInitalizedFrames);
+        gem5_assert(num_sc == 0,
+                "Actual number of shepherd cache blocks (%d) should be 0 at initialization\n",
+                num_sc, numSCBlocks, timeTicks);
+        int i = 0;
+        for (auto* candidate : candidates) {
+            if (i < numSCBlocks) {
+                auto entry = std::static_pointer_cast<SCReplData>(candidate->replacementData);
+                entry->is_sc = true;
+            }
+            i++;
+        }
+        numInitalizedFrames++;
+        num_sc = 0;
+        for (const auto& candidate : candidates) {
+            DPRINTF(ECE565, "  > is_sc=%d is_valid=%d\n",
+                std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc,
+                std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid
+            );
+
+            if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) num_sc++;
+        }
+    }
+
+    gem5_assert(num_sc == numSCBlocks,
+                "Actual number of shepherd cache blocks (%d) does not match expected (%d) @ Tick=%d\n",
+                num_sc, numSCBlocks, timeTicks);
+
+    // find the next sc block
+    Tick mintick = Tick(-1);
+    ReplaceableEntry* rplsc = nullptr;
+    for (const auto& candidate : candidates) {
+        if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) {
+            int tin = std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickInserted;
+            if (mintick == Tick(-1) || tin < mintick) {
+                mintick = tin;
+                rplsc = candidate;
+            }
+        }
+    }
+    assert(rplsc != nullptr); // assert than a next sc block was found
+
     // what state to blocks start in?
 
+    // ------------------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------------------
     // do the shifts
-    void _shift_sc(int scidx) {
+    std::function<void(int)> _shift_sc = [candidates, this](int scidx) {
         // shift the imminence trackers
         for (const auto& candidate : candidates) {
             for (int i = scidx; i < numSCBlocks-1; i++) {
                 std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[i]
                     = std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[i+1];
-            } 
+            }
             std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickTouched[numSCBlocks-1] = 0;
             std::static_pointer_cast<SCReplData>(candidate->replacementData)->isTouched[numSCBlocks-1] = false;
         }
-    }
+    };
 
-    void _victimize(ReplaceableEntry* victim) {
+    // do the SC-MC replacement
+    std::function<void(ReplaceableEntry*)> _victimize = [candidates, rplsc, _shift_sc](ReplaceableEntry* victim) {
         // shift the imminence fifos
-        if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) {
+        if (std::static_pointer_cast<SCReplData>(victim->replacementData)->is_sc) {
             int scidx = 0;
             for (const auto& candidate : candidates) {
                 if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) {
-                    if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickInserted > 
+                    if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickInserted >
                     std::static_pointer_cast<SCReplData>(victim->replacementData)->tickInserted) {
                         scidx++;
                     }
@@ -141,33 +196,17 @@ SC::getVictim(const ReplacementCandidates& candidates) const
             // calling reset() on the candidate will make is sc, preserving the number of sc blocks
             _shift_sc(0);
         }
-    }
-
-    // find the next sc block
-    Tick mintick = -1;
-    for (const auto& candidate : candidates) {
-        if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) {
-            tin = std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickInserted;
-            if (mintick == Tick(-1) || tin < mintick) mintick = tin;
-        }
-    }
-    ReplaceableEntry* rplsc = nullptr;
-    for (const auto& candidate : candidates) {
-        if (std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) {
-            tin = std::static_pointer_cast<SCReplData>(candidate->replacementData)->tickInserted;
-            if (mintick == tin) rplsc = candidate;
-        }
-    }
-    assert(rplsc != nullptr); // assert than a next sc block was found
+    };
+    // ------------------------------------------------------------------------
 
     // if there is an invalid block evict that one
     for (const auto& candidate : candidates) {
         if (!std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid) {
-            _victimize(candidate)
+            _victimize(candidate);
             return candidate;
         }
     }
-            
+
     // Visit all candidates to find victim
     ReplaceableEntry* victim = candidates[0];
     for (const auto& candidate : candidates) {
