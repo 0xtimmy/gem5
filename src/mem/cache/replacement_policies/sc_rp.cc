@@ -57,7 +57,7 @@ SC::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
     // A touch does not modify the insertion tick
     ++timeTicks;
     DPRINTF(ECE565V1, "calling touch() @ Tick=%d\n", timeTicks);
-    for (int i = 0; i < numSCBlocks; i++) {
+    for (int i = 0; i < std::static_pointer_cast<SCReplData>(replacement_data)->curr_sc_count; i++) {
         if (!std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i]) {
             std::static_pointer_cast<SCReplData>(replacement_data)->isTouched[i] = true;
             std::static_pointer_cast<SCReplData>(replacement_data)->tickTouched[i] = timeTicks;
@@ -120,7 +120,13 @@ SC::getVictim(const ReplacementCandidates& candidates) const
         //     std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid
         // );
 
-        if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc) num_sc++;
+        if(std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_sc &&
+        std::static_pointer_cast<SCReplData>(candidate->replacementData)->is_valid) num_sc++;
+    }
+
+    // Set the number of current SC blocks in every block's data
+    for (const auto& candidate : candidates) {
+        std::static_pointer_cast<SCReplData>(candidate->replacementData)->curr_sc_count = num_sc;
     }
 
     // initialize the shepherd blocks if they have not already been
@@ -211,10 +217,11 @@ SC::getVictim(const ReplacementCandidates& candidates) const
         //     // calling reset() on the candidate will make is sc, preserving the number of sc blocks
         //     _shift_sc(0);
         // }
-        if (num_sc == numSCBlocks)
+        if (num_sc == numSCBlocks) {
             std::static_pointer_cast<SCReplData>(rplsc->replacementData)->is_sc = false;
-        //     // calling reset() on the candidate will make is sc, preserving the number of sc blocks
-        _shift_sc(0);
+            //     // calling reset() on the candidate will make is sc, preserving the number of sc blocks
+            _shift_sc(0);
+        }
     };
     // ------------------------------------------------------------------------
 
