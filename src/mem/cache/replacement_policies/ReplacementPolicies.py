@@ -54,18 +54,19 @@ class DuelingRP(BaseReplacementPolicy):
         "Sub-replacement policy B"
     )
 
+
 # -----------------------------------------------------------------------------
 # ECE 565
 # -----------------------------------------------------------------------------
+
 
 class SCRP(BaseReplacementPolicy):
     type = "SCRP"
     cxx_class = "gem5::replacement_policy::SC"
     cxx_header = "mem/cache/replacement_policies/sc_rp.hh"
 
-    num_sc_blocks = Param.Percent(
-        2, "Number of shepherd cache blocks"
-    )
+    num_sc_blocks = Param.Int(2, "Number of shepherd cache blocks")
+
 
 # -----------------------------------------------------------------------------
 
