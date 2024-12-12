@@ -26,6 +26,7 @@ class SC : public Base
         Tick tickInserted;
         bool is_valid;
         bool is_sc;
+        int curr_sc_count;
 
         Tick* tickTouched;
         bool* isTouched;
@@ -33,9 +34,11 @@ class SC : public Base
          * Default constructor. Invalidate data.
          */
         SCReplData()
-          : tickInserted(0), is_valid(false), is_sc(false), tickTouched(nullptr), isTouched(nullptr) {}
+          : tickInserted(0), is_valid(false), is_sc(false), 
+          curr_sc_count(0), tickTouched(nullptr), isTouched(nullptr) {}
 
-        SCReplData(int numsc) : tickInserted(0), is_valid(false), is_sc(false) {
+        SCReplData(int numsc) : tickInserted(0), is_valid(false), 
+        is_sc(false), curr_sc_count(0) {
           tickTouched = new Tick[numsc];
           isTouched = new bool[numsc];
           for (int i = 0; i < numsc; i++) {
